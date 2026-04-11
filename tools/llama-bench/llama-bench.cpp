@@ -492,6 +492,15 @@ static ggml_type ggml_type_from_name(const std::string & s) {
         return GGML_TYPE_IQ4_NL;
     }
 
+#ifdef LLAMA_TURBOQUANT
+    // Try ggml type_name match for all TQ types (e.g. "tq_uniform_4b")
+    for (int i = GGML_TYPE_TQ_POLAR_3B; i <= GGML_TYPE_TQ_TURBO_KV_5B_FAST; i++) {
+        if (s == ggml_type_name((ggml_type)i)) {
+            return (ggml_type)i;
+        }
+    }
+#endif
+
     return GGML_TYPE_COUNT;
 }
 

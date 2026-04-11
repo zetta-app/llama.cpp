@@ -292,6 +292,14 @@ static void ggml_cuda_flash_attn_ext_vec(ggml_backend_cuda_context & ctx, ggml_t
     FATTN_VEC_CASES_ALL_D(GGML_TYPE_BF16, GGML_TYPE_BF16)
 #endif // GGML_CUDA_FA_ALL_QUANTS
 
+#ifdef LLAMA_TURBOQUANT
+    // TQ uniform 4b key cache with common V types
+    FATTN_VEC_CASES_ALL_D(GGML_TYPE_TQ_UNIFORM_4B, GGML_TYPE_F16)
+    FATTN_VEC_CASES_ALL_D(GGML_TYPE_TQ_UNIFORM_4B, GGML_TYPE_BF16)
+    FATTN_VEC_CASES_ALL_D(GGML_TYPE_TQ_UNIFORM_4B, GGML_TYPE_Q8_0)
+    FATTN_VEC_CASES_ALL_D(GGML_TYPE_TQ_UNIFORM_4B, GGML_TYPE_Q4_0)
+#endif // LLAMA_TURBOQUANT
+
     GGML_ABORT("fatal error");
 }
 
@@ -374,7 +382,15 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
 
 #ifndef GGML_CUDA_FA_ALL_QUANTS
     if (K->type != V->type) {
+#ifdef LLAMA_TURBOQUANT
+        // TQ types have explicit mixed K/V kernel instances compiled
+        // (vec kernels for TQ K + F16/BF16/Q4_0/Q8_0 V, MMA dequantizes K to F16)
+        if (K->type != GGML_TYPE_TQ_UNIFORM_4B) {
+            return BEST_FATTN_KERNEL_NONE;
+        }
+#else
         return BEST_FATTN_KERNEL_NONE;
+#endif
     }
 #endif // GGML_CUDA_FA_ALL_QUANTS
 
@@ -391,6 +407,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
         case GGML_TYPE_Q4_0:
         case GGML_TYPE_Q8_0:
         case GGML_TYPE_BF16:
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+#endif
             break;
         default:
             return BEST_FATTN_KERNEL_NONE;

@@ -123,10 +123,20 @@ if (CUDAToolkit_FOUND)
             template-instances/fattn-vec-instance-bf16-bf16.cu)
     endif()
 
+    if (GGML_TURBOQUANT)
+        list(APPEND GGML_SOURCES_CUDA
+            template-instances/fattn-vec-instance-tq-uniform-4b.cu)
+    endif()
+
     ggml_add_backend_library(ggml-cuda
                              ${GGML_HEADERS_CUDA}
                              ${GGML_SOURCES_CUDA}
                             )
+
+    if (GGML_TURBOQUANT)
+        target_compile_definitions(ggml-cuda PRIVATE LLAMA_TURBOQUANT=1)
+        target_include_directories(ggml-cuda PRIVATE ${GGML_TURBOQUANT_INCLUDE})
+    endif()
 
     add_compile_definitions(GGML_CUDA_PEER_MAX_BATCH_SIZE=${GGML_CUDA_PEER_MAX_BATCH_SIZE})
 

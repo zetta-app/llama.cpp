@@ -577,6 +577,68 @@ static __device__ __forceinline__ void dequantize_V_q8_0(const void * __restrict
     }
 }
 
+#ifdef LLAMA_TURBOQUANT
+extern "C" {
+#include "turboquant/tq_types.h"
+}
+
+// tq_uniform_4b flash attention vec_dot: 128-element blocks with LSB-first pair packing.
+// Block layout: uint16_t scale, uint16_t zero_point, uint8_t qs[64]
+// Packing: qs[j] = element[2j] | (element[2j+1] << 4)  (LSB-first pairs)
+//
+// We process 4 consecutive elements per iteration to match the Q_q8 layout (4 int8 per int32).
+// Each iteration reads 2 bytes of qs, extracts 4 elements in sequential order, and uses dp4a.
+// 32 iterations × 4 elements = 128 elements for D=128.
+
+template<int D, int nthreads>
+static __device__ __forceinline__ float vec_dot_fattn_vec_KQ_tq_uniform_4b(
+    const char * __restrict__ K_c, const void * __restrict__ Q_v, const int * __restrict__ Q_q8, const void * __restrict__ Q_ds_v) {
+
+    const block_tq_uniform_4b * K_tq = (const block_tq_uniform_4b *) K_c;
+    GGML_UNUSED(Q_v);
+
+    float sum = 0.0f;
+
+    // D/sizeof(int) iterations, same as Q4_0. Each iteration processes 4 elements.
+    // For D=128: 32 iterations, 16 int32s of qs, 2 bytes per iteration.
+#pragma unroll
+    for (int k_KQ_0 = 0; k_KQ_0 < int(D/sizeof(int)); k_KQ_0 += nthreads) {
+        const int k_KQ = k_KQ_0 + (nthreads == WARP_SIZE ? threadIdx.x : threadIdx.x % nthreads);
+
+        // 4 elements per iteration, 128 elements per block = 32 iterations per block
+        const int ib       = k_KQ / (QK_TQ_UNIFORM_4B / 4);  // block index
+        const int elem_idx = (k_KQ % (QK_TQ_UNIFORM_4B / 4)) * 4;  // first element index within block
+
+        // elem_idx is the starting element position (0, 4, 8, ..., 124).
+        // Elements are packed as pairs in bytes: qs[j] = elem[2j] | (elem[2j+1] << 4)
+        // For 4 consecutive elements starting at elem_idx:
+        //   elem_idx+0 and elem_idx+1 are in qs[elem_idx/2]
+        //   elem_idx+2 and elem_idx+3 are in qs[elem_idx/2 + 1]
+        const int byte_idx = elem_idx / 2;
+        const uint8_t b0 = K_tq[ib].qs[byte_idx + 0];
+        const uint8_t b1 = K_tq[ib].qs[byte_idx + 1];
+
+        // Extract 4 consecutive elements and pack into int32 for dp4a:
+        // e0 = b0 & 0xF, e1 = b0 >> 4, e2 = b1 & 0xF, e3 = b1 >> 4
+        const int v = (b0 & 0xF) | ((b0 >> 4) << 8) | ((b1 & 0xF) << 16) | ((b1 >> 4) << 24);
+
+        const int u = Q_q8[k_KQ_0/nthreads];
+        const int sumi = ggml_cuda_dp4a(v, u, 0);
+
+        const float K_d = __half2float(__ushort_as_half(K_tq[ib].scale));
+        const float K_m = __half2float(__ushort_as_half(K_tq[ib].zero_point));
+        const float2 Q_ds = ((const float2 *) Q_ds_v)[k_KQ_0/nthreads];
+
+        // dot = scale * d_q8 * sum(nibble_i * q8_i) + zero_point * s_q8
+        // Q_ds.x = d (q8 scale), Q_ds.y = s (d * sum of q8 values)
+        // Division by QI8_1 compensates for multiple iterations sharing one Q_ds entry
+        sum += K_d*Q_ds.x*sumi + K_m*Q_ds.y/QI8_1;
+    }
+
+    return sum;
+}
+#endif // LLAMA_TURBOQUANT
+
 template <ggml_type type_K, int D, int nthreads>
 constexpr __device__ vec_dot_KQ_t get_vec_dot_KQ() {
     if constexpr (type_K == GGML_TYPE_F16) {
@@ -593,6 +655,10 @@ constexpr __device__ vec_dot_KQ_t get_vec_dot_KQ() {
         return vec_dot_fattn_vec_KQ_q8_0<D, nthreads>;
     } else if constexpr (type_K == GGML_TYPE_BF16) {
         return vec_dot_fattn_vec_KQ_bf16<D, nthreads>;
+#ifdef LLAMA_TURBOQUANT
+    } else if constexpr (type_K == GGML_TYPE_TQ_UNIFORM_4B) {
+        return vec_dot_fattn_vec_KQ_tq_uniform_4b<D, nthreads>;
+#endif
     } else {
         static_assert(type_K == -1, "bad type");
         return nullptr;

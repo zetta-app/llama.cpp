@@ -1,6 +1,10 @@
 #include "convert.cuh"
 #include "dequantize.cuh"
 
+#ifdef LLAMA_TURBOQUANT
+#include "tq-quants.cuh"
+#endif
+
 #include <cstdint>
 
 #define CUDA_Q8_0_NE_ALIGN 2048
@@ -525,6 +529,48 @@ static void dequantize_row_q3_K_cuda(const void * vx, dst_t * y, const int64_t k
     dequantize_block_q3_K<<<nb, 64, 0, stream>>>(vx, y);
 }
 
+#ifdef LLAMA_TURBOQUANT
+// Optimized dequantize kernel for tq_uniform_4b (128-element blocks, scale + zero_point + 4-bit LSB-first packed).
+// 32 threads per CUDA block, each thread processes 4 bytes = 8 elements from one block.
+// 4 threads cover one quarter of a block (16 bytes = 32 elements), so 16 threads per block, 2 blocks per CUDA block.
+template<typename dst_t>
+static __global__ void dequantize_block_tq_uniform_4b(const void * __restrict__ vx, dst_t * __restrict__ yy, int nb128) {
+    const int64_t i = blockIdx.x;
+
+    const int64_t tid = threadIdx.x;
+    // 16 threads per tq_uniform_4b block, 2 blocks per CUDA block
+    const int64_t ib = 2*i + tid/16;  // global block index
+    if (ib >= nb128) {
+        return;
+    }
+
+    const int64_t local_tid = tid % 16;  // 0..15 within block
+
+    const block_tq_uniform_4b * x = (const block_tq_uniform_4b *)vx + ib;
+    const float d = __half2float(__ushort_as_half(x->scale));
+    const float m = __half2float(__ushort_as_half(x->zero_point));
+
+    // Each thread processes 4 consecutive bytes = 8 elements
+    // TQ_UNIFORM_4B packing: qs[j] = (element_2j) | (element_2j+1 << 4), LSB-first
+    const uint8_t * q = x->qs + 4*local_tid;  // 4 bytes starting at offset 4*local_tid
+
+    dst_t * y = yy + 128*ib + 8*local_tid;  // 8 elements per thread, sequential output
+
+    #pragma unroll
+    for (int l = 0; l < 4; ++l) {
+        y[2*l + 0] = ggml_cuda_cast<dst_t>(d * (float)(q[l] & 0xF) + m);
+        y[2*l + 1] = ggml_cuda_cast<dst_t>(d * (float)(q[l] >>  4) + m);
+    }
+}
+
+template<typename dst_t>
+static void dequantize_row_tq_uniform_4b_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
+    const int nb128 = k / 128;
+    const int nb = (nb128 + 1) / 2;  // 2 blocks per CUDA block = 256 elements
+    dequantize_block_tq_uniform_4b<<<nb, 32, 0, stream>>>(vx, y, nb128);
+}
+#endif // LLAMA_TURBOQUANT
+
 template<typename dst_t>
 static void dequantize_row_q4_0_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
     const int nb32 = k / 32;
@@ -760,6 +806,10 @@ to_fp16_cuda_t ggml_get_to_fp16_cuda(ggml_type type) {
             return convert_unary_cont_cuda<float>;
         case GGML_TYPE_BF16:
             return convert_unary_cont_cuda<nv_bfloat16>;
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+            return dequantize_row_tq_uniform_4b_cuda;
+#endif
         default:
             return nullptr;
     }
@@ -813,6 +863,10 @@ to_fp32_cuda_t ggml_get_to_fp32_cuda(ggml_type type) {
             return convert_unary_cont_cuda<half>;
         case GGML_TYPE_BF16:
             return convert_unary_cont_cuda<nv_bfloat16>;
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+            return dequantize_row_tq_uniform_4b_cuda;
+#endif
         default:
             return nullptr;
     }
@@ -834,6 +888,10 @@ to_fp16_nc_cuda_t ggml_get_to_fp16_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
         case GGML_TYPE_BF16:
             return convert_unary_cuda<nv_bfloat16>;
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+            return dequantize_block_cuda<TQ_QK_UNIFORM_4B, TQ_QR_UNIFORM_4B, dequantize_tq_uniform_4b>;
+#endif
         default:
             return nullptr;
     }
@@ -855,6 +913,10 @@ to_bf16_nc_cuda_t ggml_get_to_bf16_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
         case GGML_TYPE_F16:
             return convert_unary_cuda<half, nv_bfloat16>;
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+            return dequantize_block_cuda<TQ_QK_UNIFORM_4B, TQ_QR_UNIFORM_4B, dequantize_tq_uniform_4b>;
+#endif
         default:
             return nullptr;
     }
@@ -876,6 +938,10 @@ to_fp32_nc_cuda_t ggml_get_to_fp32_nc_cuda(ggml_type type) {
             return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
         case GGML_TYPE_BF16:
             return convert_unary_cuda<nv_bfloat16, float>;
+#ifdef LLAMA_TURBOQUANT
+        case GGML_TYPE_TQ_UNIFORM_4B:
+            return dequantize_block_cuda<TQ_QK_UNIFORM_4B, TQ_QR_UNIFORM_4B, dequantize_tq_uniform_4b>;
+#endif
         default:
             return nullptr;
     }

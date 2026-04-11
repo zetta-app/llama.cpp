@@ -1267,3 +1267,72 @@ static __device__ __forceinline__ float vec_dot_iq4_xs_q8_1(
     const float d = __half2float(bq4->d) * __low2float(bq8_1[iqs/4].ds);
     return d * sumi;
 }
+
+#ifdef LLAMA_TURBOQUANT
+
+extern "C" {
+#include "turboquant/tq_types.h"
+}
+
+// VDR = 2: each thread processes 2 int32s = 16 nibbles = 16 elements per iteration.
+// With qi=16, that means qi/vdr=8 threads cover one 128-element block.
+#define VDR_TQ_UNIFORM_4B_Q8_1_MMVQ 2
+
+// TQ_UNIFORM_4B vec_dot for MMVQ kernel.
+//
+// Block layout: scale(fp16) + zero_point(fp16) + 64 bytes of 4-bit packed data.
+// 128 elements per block = 4 q8_1 sub-blocks of 32 elements each.
+//
+// The dequantized value is: val = nibble * scale + zero_point
+// So the dot product contribution is:
+//   sum_i(nibble_i * q8_i) * scale * d8  +  zero_point * s8
+// where d8 = q8_1.d and s8 = q8_1.s = d8 * sum(q8_i).
+//
+// iqs ranges over [0, qi) in steps of vdr, i.e. 0,2,4,6,8,10,12,14.
+// Each iqs value addresses 2 int32s = 8 bytes = 16 nibbles = 16 elements.
+// The corresponding q8_1 sub-block is at index iqs/4 (since each q8_1 block
+// covers 32 elements = 8 nibbles per int32 * 4 int32s).
+static __device__ __forceinline__ float vec_dot_tq_uniform_4b_q8_1(
+    const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+
+    const block_tq_uniform_4b * bq = (const block_tq_uniform_4b *) vbq + kbx;
+
+    const float scale = __half2float(__ushort_as_half(bq->scale));
+    const float zp    = __half2float(__ushort_as_half(bq->zero_point));
+
+    // iqs is in units of int32 indices into the qs array.
+    // Each int32 holds 8 nibbles (4 low + 4 high).
+    // iqs/4 selects which q8_1 sub-block we're in (0..3).
+    // iqs%4 selects which int32 within that sub-block's 4 int32s.
+    const int q8_block = iqs / 4;  // which of the 4 q8_1 sub-blocks
+    const int q8_local = iqs % 4;  // int32 offset within that sub-block
+
+    int sumi = 0;
+
+#pragma unroll
+    for (int i = 0; i < VDR_TQ_UNIFORM_4B_Q8_1_MMVQ; ++i) {
+        // Load 4 bytes (8 nibbles) of quantized weights
+        const int vi = get_int_b4(bq->qs, iqs + i);
+        const int vi0 = (vi >> 0) & 0x0F0F0F0F;  // even nibbles (elements 0,2,4,6)
+        const int vi1 = (vi >> 4) & 0x0F0F0F0F;  // odd nibbles  (elements 1,3,5,7)
+
+        // Load corresponding q8_1 values.
+        // Within a q8_1 block (32 elements = 8 int32s), the low nibbles map to
+        // the first 16 elements (int32 indices 0..3) and high nibbles to the
+        // second 16 elements (int32 indices 4..7), matching QR=2 interleaving.
+        // Offset of 4 int32s = half a q8_1 block, same as QI4_0.
+        const int u0 = get_int_b4(bq8_1[q8_block].qs, q8_local + i);
+        const int u1 = get_int_b4(bq8_1[q8_block].qs, q8_local + i + 4);
+
+        sumi = ggml_cuda_dp4a(vi0, u0, sumi);
+        sumi = ggml_cuda_dp4a(vi1, u1, sumi);
+    }
+
+    // d8 = q8_1.d, s8 = q8_1.s = d8 * sum(q8_i)
+    const float2 ds8 = __half22float2(bq8_1[q8_block].ds);
+
+    // dot = scale * d8 * sum(nibble_i * q8_i) + zero_point * s8
+    return scale * ds8.x * (float)sumi + zp * ds8.y;
+}
+
+#endif // LLAMA_TURBOQUANT

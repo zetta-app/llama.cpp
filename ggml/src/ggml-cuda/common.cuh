@@ -1071,6 +1071,23 @@ struct ggml_cuda_type_traits<GGML_TYPE_IQ3_S> {
     static constexpr int qi = QI3_S;
 };
 
+#ifdef LLAMA_TURBOQUANT
+// TQ_UNIFORM_4B: 128-element blocks, 4-bit uniform min-max quantization
+// Layout: scale(fp16) + zero_point(fp16) + 64 bytes packed 4-bit (2 values/byte)
+// qr=2 means 2 values per byte (same as Q4_0/Q4_1)
+// qi = qk / (4 * qr) = 128 / 8 = 16 int32s of quantized data per block
+#define QK_TQ_UNIFORM_4B 128
+#define QR_TQ_UNIFORM_4B 2
+#define QI_TQ_UNIFORM_4B (QK_TQ_UNIFORM_4B / (4 * QR_TQ_UNIFORM_4B))
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_TQ_UNIFORM_4B> {
+    static constexpr int qk = QK_TQ_UNIFORM_4B;
+    static constexpr int qr = QR_TQ_UNIFORM_4B;
+    static constexpr int qi = QI_TQ_UNIFORM_4B;
+};
+#endif // LLAMA_TURBOQUANT
+
 //////////////////////
 
 struct ggml_cuda_device_info {
