@@ -52,7 +52,6 @@ For the full list of features, please refer to [server's changelog](https://gith
 | `-n, --predict, --n-predict N` | number of tokens to predict (default: -1, -1 = infinity)<br/>(env: LLAMA_ARG_N_PREDICT) |
 | `-b, --batch-size N` | logical maximum batch size (default: 2048)<br/>(env: LLAMA_ARG_BATCH) |
 | `-ub, --ubatch-size N` | physical maximum batch size (default: 512)<br/>(env: LLAMA_ARG_UBATCH) |
-| `--keep N` | number of tokens to keep from the initial prompt (default: 0, -1 = all) |
 | `--swa-full` | use full-size SWA cache (default: false)<br/>[(more info)](https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)<br/>(env: LLAMA_ARG_SWA_FULL) |
 | `-fa, --flash-attn [on\|off\|auto]` | set Flash Attention use ('on', 'off', or 'auto', default: 'auto')<br/>(env: LLAMA_ARG_FLASH_ATTN) |
 | `--perf, --no-perf` | whether to enable internal libllama performance timings (default: false)<br/>(env: LLAMA_ARG_PERF) |
@@ -168,7 +167,6 @@ For the full list of features, please refer to [server's changelog](https://gith
 | `-cram, --cache-ram N` | set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 - disable)[(more info)](https://github.com/ggml-org/llama.cpp/pull/16391)<br/>(env: LLAMA_ARG_CACHE_RAM) |
 | `-kvu, --kv-unified, -no-kvu, --no-kv-unified` | use single unified KV buffer shared across all sequences (default: enabled if number of slots is auto)<br/>(env: LLAMA_ARG_KV_UNIFIED) |
 | `--clear-idle, --no-clear-idle` | save and clear idle slots on new task (default: enabled, requires unified KV and cache-ram)<br/>(env: LLAMA_ARG_CLEAR_IDLE) |
-| `--context-shift, --no-context-shift` | whether to use context shift on infinite text generation (default: disabled)<br/>(env: LLAMA_ARG_CONTEXT_SHIFT) |
 | `-r, --reverse-prompt PROMPT` | halt generation at PROMPT, return control in interactive mode |
 | `-sp, --special` | special tokens output enabled (default: false) |
 | `--warmup, --no-warmup` | whether to perform warmup with an empty run (default: enabled) |
@@ -422,9 +420,6 @@ Note for `multimodal_data` in JSON object prompts. This should be an array of st
 `n_predict`: Set the maximum number of tokens to predict when generating text. **Note:** May exceed the set limit slightly if the last token is a partial multibyte character. When 0, no tokens will be generated but the prompt is evaluated into the cache. Default: `-1`, where `-1` is infinity.
 
 `n_indent`: Specify the minimum line indentation for the generated text in number of whitespace characters. Useful for code completion tasks. Default: `0`
-
-`n_keep`: Specify the number of tokens from the prompt to retain when the context size is exceeded and tokens need to be discarded. The number excludes the BOS token.
-By default, this value is set to `0`, meaning no tokens are kept. Use `-1` to retain all tokens from the prompt.
 
 `n_cmpl`: Number of completions to generate from the current prompt. If input has multiple prompts, the output will have N prompts times `n_cmpl` entries.
 
@@ -769,8 +764,6 @@ By default, it is read-only. To make POST request to change global properties, y
       "mirostat_eta": 0.10000000149011612,
       "stop": [],
       "max_tokens": -1,
-      "n_keep": 0,
-      "n_discard": 0,
       "ignore_eos": false,
       "stream": true,
       "n_probs": 0,
@@ -911,8 +904,6 @@ If query param `?fail_on_no_slot=1` is set, this endpoint will respond with stat
       "mirostat_tau": 5.0,
       "mirostat_eta": 0.10000000149011612,
       "max_tokens": -1,
-      "n_keep": 0,
-      "n_discard": 0,
       "ignore_eos": false,
       "stream": true,
       "n_probs": 0,
@@ -976,8 +967,6 @@ If query param `?fail_on_no_slot=1` is set, this endpoint will respond with stat
       "mirostat_tau": 5.0,
       "mirostat_eta": 0.10000000149011612,
       "max_tokens": -1,
-      "n_keep": 0,
-      "n_discard": 0,
       "ignore_eos": false,
       "stream": true,
       "n_probs": 0,

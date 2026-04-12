@@ -27,26 +27,13 @@ format_prompt() {
     printf "\n### Human: %s\n### Assistant: %s" "${CHAT[@]}" "$1"
 }
 
-tokenize() {
-    curl \
-        --silent \
-        --request POST \
-        --url "${API_URL}/tokenize" \
-        --header "Content-Type: application/json" \
-        --data-raw "$(jq -ns --arg content "$1" '{content:$content}')" \
-    | jq '.tokens[]'
-}
-
-N_KEEP=$(tokenize "${INSTRUCTION}" | wc -l)
-
 chat_completion() {
     PROMPT="$(trim_trailing "$(format_prompt "$1")")"
-    DATA="$(echo -n "$PROMPT" | jq -Rs --argjson n_keep $N_KEEP '{
+    DATA="$(echo -n "$PROMPT" | jq -Rs '{
         prompt: .,
         temperature: 0.2,
         top_k: 40,
         top_p: 0.9,
-        n_keep: $n_keep,
         n_predict: 256,
         cache_prompt: true,
         stop: ["\n### Human:"],

@@ -270,21 +270,8 @@ static void reset_long_term_states(const bool clear_kv_cache = true) {
 }
 
 /**
- * TODO-hyin: implement sliding-window version as a better alternative
- *
- * Context shifting by discarding the older half of the tokens appended after system prompt:
- * - take the [system_prompt_position] first tokens from the original prompt
- * - take half of the last (system_prompt_position - system_prompt_position) tokens
- * - recompute the logits in batches
+ * Decode tokens in batches using the global batch.
  */
-static void shift_context() {
-    const int n_discard = (current_position - system_prompt_position) / 2;
-    LOGi("%s: Discarding %d tokens", __func__, n_discard);
-    llama_memory_seq_rm(llama_get_memory(g_context), 0, system_prompt_position, system_prompt_position + n_discard);
-    llama_memory_seq_add(llama_get_memory(g_context), 0, system_prompt_position + n_discard, current_position, -n_discard);
-    current_position -= n_discard;
-    LOGi("%s: Context shifting done! Current position: %d", __func__, current_position);
-}
 
 static std::string chat_add_and_format(const std::string &role, const std::string &content) {
     common_chat_msg new_msg;
@@ -326,10 +313,10 @@ static int decode_tokens_in_batches(
         common_batch_clear(batch);
         LOGv("%s: Preparing a batch size of %d starting at: %d", __func__, cur_batch_size, i);
 
-        // Shift context if current batch cannot fit into the context
+        // Stop if current batch cannot fit into the context
         if (start_pos + i + cur_batch_size >= DEFAULT_CONTEXT_SIZE - OVERFLOW_HEADROOM) {
-            LOGw("%s: Current batch won't fit into context! Shifting...", __func__);
-            shift_context();
+            LOGw("%s: Current batch won't fit into context!", __func__);
+            return 1;
         }
 
         // Add tokens to the batch with proper positions
@@ -489,10 +476,10 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_generateNextToken(
         JNIEnv *env,
         jobject /*unused*/
 ) {
-    // Infinite text generation via context shifting
+    // Stop if context is full
     if (current_position >= DEFAULT_CONTEXT_SIZE - OVERFLOW_HEADROOM) {
-        LOGw("%s: Context full! Shifting...", __func__);
-        shift_context();
+        LOGw("%s: Context full!", __func__);
+        return env->NewStringUTF("");
     }
 
     // Stop if reaching the marked position

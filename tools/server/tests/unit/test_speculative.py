@@ -92,24 +92,6 @@ def test_slot_ctx_not_exceeded():
     assert len(res.body["content"]) > 0
 
 
-def test_with_ctx_shift():
-    global server
-    server.n_ctx = 256
-    server.enable_ctx_shift = True
-    server.start()
-    res = server.make_request("POST", "/completion", data={
-        "prompt": "Hello " * 248,
-        "temperature": 0.0,
-        "top_k": 1,
-        "n_predict": 256,
-        "speculative.p_min": 0.0,
-    })
-    assert res.status_code == 200
-    assert len(res.body["content"]) > 0
-    assert res.body["tokens_predicted"] == 256
-    assert res.body["truncated"] == True
-
-
 @pytest.mark.parametrize("n_slots,n_requests", [
     (1, 2),
     (2, 2),

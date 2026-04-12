@@ -22,7 +22,6 @@ int main(int argc, char ** argv) {
     common_params params;
 
     params.n_junk = 250;
-    params.n_keep = 32;
     params.i_pos  = -1;
 
     common_init();
@@ -32,7 +31,7 @@ int main(int argc, char ** argv) {
     }
 
     int n_junk = params.n_junk;
-    int n_keep = params.n_keep;
+    int n_keep = 32;
     int n_grp  = params.grp_attn_n;
     int i_pos  = params.i_pos;
 
@@ -163,47 +162,6 @@ int main(int argc, char ** argv) {
 
         if (i + n_batch >= n_tokens_all) {
             break;
-        }
-    }
-
-    for (int i = n_ctx; i < n_tokens_all; i += n_batch) {
-        const int n_discard = n_batch;
-
-        LOG_INF("%s: shifting KV cache with %d\n", __func__, n_discard);
-
-        llama_memory_seq_rm (mem, 0, n_keep            , n_keep + n_discard);
-        llama_memory_seq_add(mem, 0, n_keep + n_discard, n_ctx,  -n_discard);
-
-        n_past = llama_memory_seq_pos_max(mem, 0) + 1;
-
-        common_batch_clear(batch);
-
-        for (int j = 0; j < n_batch && i + j < n_tokens_all; j++) {
-            common_batch_add(batch, tokens_list[i + j], n_past++, { 0 }, false);
-        }
-
-        if (i + n_batch >= n_tokens_all) {
-            batch.logits[batch.n_tokens - 1] = true;
-        }
-
-        if (llama_decode(ctx, batch) != 0) {
-            LOG_ERR("%s: llama_decode() failed\n", __func__);
-            return 1;
-        }
-
-        LOG_INF("%s: processed: [%6d, %6d)\n", __func__, i, std::min(i + n_batch, n_tokens_all));
-    }
-
-    {
-        const int n_discard = n_past - n_ctx + n_predict;
-
-        if (n_discard > 0) {
-            LOG_INF("%s: shifting KV cache with %d to free space for the answer\n", __func__, n_discard);
-
-            llama_memory_seq_rm (mem, 0, n_keep            , n_keep + n_discard);
-            llama_memory_seq_add(mem, 0, n_keep + n_discard, n_ctx,  -n_discard);
-
-            n_past = llama_memory_seq_pos_max(mem, 0) + 1;
         }
     }
 

@@ -239,7 +239,6 @@ build\ReleaseOV\bin\llama-cli.exe -m "C:\models\Llama-3.2-1B-Instruct-Q4_0.gguf"
   - Model caching is not yet supported.
   - `llama-server -np > 1` (multiple parallel sequences) is not supported.
   - `llama-perplexity` is only supported with `-b 512` or smaller.
-- `--context-shift` with `llama-cli` is currently not supported with OpenVINO backend across CPU, GPU, and NPU devices.
 - Encoder models (embedding, reranking) are not supported with the current OpenVINO backend implementation.
 - `-fa 1` is required when running llama-bench with the OpenVINO backend.
   - `GGML_OPENVINO_STATEFUL_EXECUTION=1 GGML_OPENVINO_DEVICE=GPU ./llama-bench -fa 1`

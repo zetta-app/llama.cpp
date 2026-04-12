@@ -1281,11 +1281,6 @@ common_init_result_ptr common_init_from_params(common_params & params) {
 
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
-    if (params.ctx_shift && !llama_memory_can_shift(llama_get_memory(lctx))) {
-        LOG_WRN("%s: KV cache shifting is not supported for this context, disabling KV cache shifting\n", __func__);
-        params.ctx_shift = false;
-    }
-
     if (!params.control_vectors.empty()) {
         if (params.control_vector_layer_start <= 0) params.control_vector_layer_start = 1;
         if (params.control_vector_layer_end   <= 0) params.control_vector_layer_end   = llama_model_n_layer(model);

@@ -115,7 +115,6 @@ llama-completion.exe -m models\gemma-1.1-7b-it.Q4_K_M.gguf --ignore-eos -n -1
 | `-n, --predict, --n-predict N` | number of tokens to predict (default: -1, -1 = infinity, -2 = until context filled)<br/>(env: LLAMA_ARG_N_PREDICT) |
 | `-b, --batch-size N` | logical maximum batch size (default: 2048)<br/>(env: LLAMA_ARG_BATCH) |
 | `-ub, --ubatch-size N` | physical maximum batch size (default: 512)<br/>(env: LLAMA_ARG_UBATCH) |
-| `--keep N` | number of tokens to keep from the initial prompt (default: 0, -1 = all) |
 | `--swa-full` | use full-size SWA cache (default: false)<br/>[(more info)](https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)<br/>(env: LLAMA_ARG_SWA_FULL) |
 | `-fa, --flash-attn [on\|off\|auto]` | set Flash Attention use ('on', 'off', or 'auto', default: 'auto')<br/>(env: LLAMA_ARG_FLASH_ATTN) |
 | `-p, --prompt PROMPT` | prompt to start generation with; for system message, use -sys |
@@ -230,7 +229,6 @@ llama-completion.exe -m models\gemma-1.1-7b-it.Q4_K_M.gguf --ignore-eos -n -1
 | -------- | ----------- |
 | `--display-prompt, --no-display-prompt` | whether to print prompt at generation (default: true) |
 | `-co, --color [on\|off\|auto]` | Colorize output to distinguish prompt and user input from generations ('on', 'off', or 'auto', default: 'auto')<br/>'auto' enables colors when output is to a terminal |
-| `--context-shift, --no-context-shift` | whether to use context shift on infinite text generation (default: disabled)<br/>(env: LLAMA_ARG_CONTEXT_SHIFT) |
 | `-sys, --system-prompt PROMPT` | system prompt to use with model (if applicable, depending on chat template) |
 | `-sysf, --system-prompt-file FNAME` | a file containing the system prompt (default: none) |
 | `-ptc, --print-token-count N` | print token count every N tokens (default: -1) |
@@ -350,14 +348,6 @@ Some fine-tuned models have extended the context length by scaling RoPE. For exa
 
 -   `--rope-scale N`: Where N is the linear scaling factor used by the fine-tuned model.
 
-### Keep Prompt
-
-The `--keep` option allows users to retain the original prompt when the model runs out of context, ensuring a connection to the initial instruction or conversation topic is maintained.
-
--   `--keep N`: Specify the number of tokens from the initial prompt to retain when the model resets its internal context. By default, this value is set to 0 (meaning no tokens are kept). Use `-1` to retain all tokens from the initial prompt.
-
-By utilizing context management options like `--ctx-size` and `--keep`, you can maintain a more coherent and consistent interaction with the LLaMA models, ensuring that the generated text remains relevant to the original prompt or conversation.
-
 ## Generation Flags
 
 The following options allow you to control the text generation process and fine-tune the diversity, creativity, and quality of the generated text according to your needs. By adjusting these options and experimenting with different combinations of values, you can find the best settings for your specific use case.
@@ -368,11 +358,7 @@ The following options allow you to control the text generation process and fine-
 
 The `--predict` option controls the number of tokens the model generates in response to the input prompt. By adjusting this value, you can influence the length of the generated text. A higher value will result in longer text, while a lower value will produce shorter text.
 
-A value of -1 will enable infinite text generation, even though we have a finite context window. When the context window is full, some of the earlier tokens (half of the tokens after `--keep`) will be discarded. The context must then be re-evaluated before generation can resume. On large models and/or large context windows, this will result in a significant pause in output.
-
-If the pause is undesirable, a value of -2 will stop generation immediately when the context is filled.
-
-The `--no-context-shift` option allows you to stop the infinite text generation once the finite context window is full.
+A value of -1 will enable text generation until the context window is full. A value of -2 will stop generation immediately when the context is filled.
 
 It is important to note that the generated text may be shorter than the specified number of tokens if an End-of-Sequence (EOS) token or a reverse prompt is encountered. In interactive mode, text generation will pause and control will be returned to the user. In non-interactive mode, the program will end. In both cases, the text generation may stop before reaching the specified `--predict` value. If you want the model to keep going without ever producing End-of-Sequence on its own, you can use the `--ignore-eos` parameter.
 

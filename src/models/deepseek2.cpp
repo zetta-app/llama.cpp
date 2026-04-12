@@ -159,7 +159,7 @@ llm_build_deepseek2::llm_build_deepseek2(const llama_model & model, const llm_gr
                 cb(q_nope_absorbed, "q_nope_absorbed_perm", il);
 
                 // {n_embd_head_qk_rope + kv_lora_rank, n_head, n_tokens}
-                // note: rope must go first for in-place context shifting in build_rope_shift()
+                // note: rope must go first for in-place shifting in build_rope_shift()
                 ggml_tensor * Qcur = ggml_concat(ctx0, q_nope_absorbed, q_pe, 0);
                 cb(Qcur, "Qcur", il);
 

@@ -66,7 +66,6 @@ struct cli_context {
     cli_context(const common_params & params) {
         defaults.sampling    = params.sampling;
         defaults.speculative = params.speculative;
-        defaults.n_keep      = params.n_keep;
         defaults.n_predict   = params.n_predict;
         defaults.antiprompt  = params.antiprompt;
 

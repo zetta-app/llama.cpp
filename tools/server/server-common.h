@@ -183,7 +183,7 @@ public:
     // appends server tokens, updates the media map. copies media chunks.
     void push_back(server_tokens & tokens);
 
-    // for compatibility with context shift and prompt truncation
+    // for compatibility with prompt truncation
     void insert(const llama_tokens & inp_tokens);
 
     // for compatibility with speculative decoding, ctx shift, slot save/load

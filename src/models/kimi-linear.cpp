@@ -253,7 +253,7 @@ llm_build_kimi_linear::llm_build_kimi_linear(const llama_model & model, const ll
                 cb(q_nope_absorbed, "q_nope_absorbed_perm", il);
 
                 // {n_embd_head_qk_rope + kv_lora_rank, n_head, n_tokens}
-                // note: rope must go first for in-place context shifting in build_rope_shift()
+                // note: rope must go first for in-place shifting in build_rope_shift()
                 Qcur = ggml_concat(ctx0, q_nope_absorbed, q_pe, 0);
                 cb(Qcur, "Qcur", il);
 

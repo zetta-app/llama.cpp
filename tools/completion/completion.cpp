@@ -404,13 +404,6 @@ int main(int argc, char ** argv) {
         }
     }
 
-    // number of tokens to keep when resetting context
-    if (params.n_keep < 0 || params.n_keep > (int) embd_inp.size()) {
-        params.n_keep = (int)embd_inp.size();
-    } else {
-        params.n_keep += add_bos; // always keep the BOS token
-    }
-
     if (params.conversation_mode) {
         if (params.single_turn && !params.prompt.empty()) {
             params.interactive = false;
@@ -432,13 +425,6 @@ int main(int argc, char ** argv) {
             LOG_INF("%6d -> '%s'\n", embd_inp[i], common_token_to_piece(ctx, embd_inp[i]).c_str());
         }
 
-        if (params.n_keep > add_bos) {
-            LOG_INF("%s: static prompt based on n_keep: '", __func__);
-            for (int i = 0; i < params.n_keep; i++) {
-                LOG_CNT("%s", common_token_to_piece(ctx, embd_inp[i]).c_str());
-            }
-            LOG_CNT("'\n");
-        }
         LOG_INF("\n");
     }
 
@@ -502,7 +488,7 @@ int main(int argc, char ** argv) {
     LOG_INF("sampler params: \n%s\n", sparams.print().c_str());
     LOG_INF("sampler chain: %s\n",    common_sampler_print(smpl).c_str());
 
-    LOG_INF("generate: n_ctx = %d, n_batch = %d, n_predict = %d, n_keep = %d\n", n_ctx, params.n_batch, params.n_predict, params.n_keep);
+    LOG_INF("generate: n_ctx = %d, n_batch = %d, n_predict = %d\n", n_ctx, params.n_batch, params.n_predict);
 
     // group-attention state
     // number of grouped KV tokens so far (used only if params.grp_attn_n > 1)
@@ -609,39 +595,9 @@ int main(int argc, char ** argv) {
             }
 
             if (ga_n == 1) {
-                // infinite text generation via context shifting
-                // if we run out of context:
-                // - take the n_keep first tokens from the original prompt (via n_past)
-                // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-
                 if (n_past + (int) embd.size() >= n_ctx) {
-                    if (!params.ctx_shift){
-                        LOG_WRN("\n\n%s: context full and context shift is disabled => stopping\n", __func__);
-                        break;
-                    }
-
-                    if (params.n_predict == -2) {
-                        LOG_WRN("\n\n%s: context full and n_predict == %d => stopping\n", __func__, params.n_predict);
-                        break;
-                    }
-
-                    const int n_left    = n_past - params.n_keep;
-                    const int n_discard = n_left/2;
-
-                    LOG_DBG("context full, swapping: n_past = %d, n_left = %d, n_ctx = %d, n_keep = %d, n_discard = %d\n",
-                            n_past, n_left, n_ctx, params.n_keep, n_discard);
-
-                    llama_memory_seq_rm (mem, 0, params.n_keep            , params.n_keep + n_discard);
-                    llama_memory_seq_add(mem, 0, params.n_keep + n_discard, n_past, -n_discard);
-
-                    n_past -= n_discard;
-
-                    LOG_DBG("after swap: n_past = %d\n", n_past);
-
-                    LOG_DBG("embd: %s\n", string_from(ctx, embd).c_str());
-
-                    LOG_DBG("clear session path\n");
-                    path_session.clear();
+                    LOG_WRN("\n\n%s: context full => stopping\n", __func__);
+                    break;
                 }
             } else {
                 // context extension via Self-Extend

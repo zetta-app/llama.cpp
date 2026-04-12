@@ -68,7 +68,6 @@ struct server_slot {
 
     // generation props
     int32_t n_ctx       = 0;  // context size per slot
-    int32_t n_keep      = 0;
     int32_t n_decoded   = 0;
     int32_t n_remaining = -1;
     int32_t i_batch     = -1;
@@ -282,7 +281,6 @@ struct server_slot {
         int n_draft_max = task->params.speculative.n_max;
 
         // note: slot.prompt is not yet expanded with the `id` token sampled above
-        //       also, need to leave space for 1 extra token to allow context shifts
         n_draft_max = std::min(n_draft_max, n_ctx - prompt.n_tokens() - 2);
 
         if (n_remaining > 0) {
@@ -716,11 +714,6 @@ private:
             }
             SRV_INF("loaded multimodal model, '%s'\n", mmproj_path.c_str());
 
-            if (params_base.ctx_shift) {
-                params_base.ctx_shift = false;
-                SRV_WRN("%s\n", "ctx_shift is not supported by multimodal, it will be disabled");
-            }
-
             if (params_base.n_cache_reuse) {
                 params_base.n_cache_reuse = 0;
                 SRV_WRN("%s\n", "cache_reuse is not supported by multimodal, it will be disabled");
@@ -733,11 +726,6 @@ private:
         }
 
         if (!llama_memory_can_shift(llama_get_memory(ctx))) {
-            if (params_base.ctx_shift) {
-                params_base.ctx_shift = false;
-                SRV_WRN("%s\n", "ctx_shift is not supported by this context, it will be disabled");
-            }
-
             if (params_base.n_cache_reuse) {
                 params_base.n_cache_reuse = 0;
                 SRV_WRN("%s\n", "cache_reuse is not supported by this context, it will be disabled");
@@ -1277,8 +1265,8 @@ private:
             slot.has_next_token = true;
         }
 
-        // if context shifting is disabled, make sure that we don't run out of context
-        if (!params_base.ctx_shift && slot.prompt.n_tokens() + 1 >= slot.n_ctx) {
+        // if we run out of context, stop generation
+        if (slot.prompt.n_tokens() + 1 >= slot.n_ctx) {
             slot.truncated      = true;
             slot.stop           = STOP_TYPE_LIMIT;
             slot.has_next_token = false;
@@ -2013,64 +2001,11 @@ private:
             queue_tasks.post(std::move(task));
         }
 
-        // apply context-shift if needed
-        // TODO: simplify and improve
+        // if any slot ran out of context, stop it (redundant safety check)
         for (server_slot & slot : slots) {
             if (slot.state == SLOT_STATE_GENERATING && slot.prompt.n_tokens() + 1 >= slot.n_ctx) {
-                if (!params_base.ctx_shift) {
-                    // this check is redundant (for good)
-                    // we should never get here, because generation should already stopped in process_token()
-                    send_error(slot, "context shift is disabled", ERROR_TYPE_SERVER);
-                    slot.release();
-                    continue;
-                }
-
-                if (mctx) {
-                    // we should never reach this because params_base.ctx_shift is automatically disabled if mmproj is loaded
-                    // we don't support ctx_shift because an image chunk may contains multiple tokens
-                    GGML_ABORT("not supported by multimodal");
-                }
-
-                if (slot.task->is_parent() || slot.task->is_child()) {
-                    send_error(slot, "context shift cannot be used for shared prompt", ERROR_TYPE_SERVER);
-                    slot.release();
-                    continue;
-                }
-
-                // Shift context
-                int n_keep = slot.task->params.n_keep < 0 ? slot.task->n_tokens() : slot.task->params.n_keep;
-
-                if (add_bos_token) {
-                    n_keep += 1;
-                }
-
-                n_keep = std::min(slot.n_ctx - 4, n_keep);
-
-                const int n_left    = slot.prompt.n_tokens() - n_keep;
-                const int n_discard = slot.task->params.n_discard ? slot.task->params.n_discard : (n_left / 2);
-
-                SLT_WRN(slot, "slot context shift, n_keep = %d, n_left = %d, n_discard = %d\n", n_keep, n_left, n_discard);
-
-                llama_memory_seq_rm (llama_get_memory(ctx), slot.id, n_keep            , n_keep + n_discard);
-                llama_memory_seq_add(llama_get_memory(ctx), slot.id, n_keep + n_discard, slot.prompt.n_tokens(), -n_discard);
-
-                // add generated tokens to cache
-                // ref: https://github.com/ggml-org/llama.cpp/pull/16818#discussion_r2473269481
-                {
-                    GGML_ASSERT(!slot.prompt.tokens.has_mtmd);
-
-                    llama_tokens new_tokens = slot.prompt.tokens.get_text_tokens(); // copy
-                    for (size_t i = n_keep + n_discard; i < new_tokens.size(); i++) {
-                        new_tokens[i - n_discard] = new_tokens[i];
-                    }
-
-                    new_tokens.resize(slot.prompt.tokens.size() - n_discard);
-
-                    slot.prompt.tokens.clear();
-                    slot.prompt.tokens.insert(new_tokens);
-                }
-
-                slot.truncated = true;
+                send_error(slot, "context full", ERROR_TYPE_SERVER);
+                slot.release();
             }
         }
 
@@ -2194,8 +2129,8 @@ private:
 
                         slot.state = SLOT_STATE_PROCESSING_PROMPT;
 
-                        SLT_INF(slot, "new prompt, n_ctx_slot = %d, n_keep = %d, task.n_tokens = %d\n",
-                                slot.n_ctx, slot.task->params.n_keep, slot.task->n_tokens());
+                        SLT_INF(slot, "new prompt, n_ctx_slot = %d, task.n_tokens = %d\n",
+                                slot.n_ctx, slot.task->n_tokens());
 
                         // print prompt tokens (for debugging)
                         /*if (1) {

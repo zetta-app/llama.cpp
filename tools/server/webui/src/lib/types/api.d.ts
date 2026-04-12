@@ -151,8 +151,6 @@ export interface ApiLlamaCppServerProps {
 			mirostat_eta: number;
 			stop: string[];
 			max_tokens: number;
-			n_keep: number;
-			n_discard: number;
 			ignore_eos: boolean;
 			stream: boolean;
 			logit_bias: Array<[number, number]>;
@@ -327,8 +325,6 @@ export interface ApiSlotData {
 		mirostat_tau: number;
 		mirostat_eta: number;
 		max_tokens: number;
-		n_keep: number;
-		n_discard: number;
 		ignore_eos: boolean;
 		stream: boolean;
 		n_probs: number;

@@ -60,21 +60,6 @@ function format_prompt(question) {
     }\n### Human: ${question}\n### Assistant:`
 }
 
-async function tokenize(content) {
-    const result = await fetch(`${API_URL}/tokenize`, {
-        method: 'POST',
-        body: JSON.stringify({ content })
-    })
-
-    if (!result.ok) {
-        return []
-    }
-
-    return await result.json().tokens
-}
-
-const n_keep = await tokenize(instruction).length
-
 async function chat_completion(question) {
     const result = await fetch(`${API_URL}/completion`, {
         method: 'POST',
@@ -83,7 +68,6 @@ async function chat_completion(question) {
             temperature: 0.2,
             top_k: 40,
             top_p: 0.9,
-            n_keep: n_keep,
             n_predict: 256,
             cache_prompt: no_cached_prompt === "false",
             slot_id: slot_id,

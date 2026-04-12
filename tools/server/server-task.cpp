@@ -63,8 +63,6 @@ json task_params::to_json(bool only_metrics) const {
             {"mirostat_eta",              sampling.mirostat_eta},
             {"max_tokens",                n_predict},
             {"n_predict",                 n_predict}, // TODO: deduplicate?
-            {"n_keep",                    n_keep},
-            {"n_discard",                 n_discard},
             {"ignore_eos",                sampling.ignore_eos},
             {"stream",                    stream},
             {"n_probs",                   sampling.n_probs},
@@ -121,8 +119,6 @@ json task_params::to_json(bool only_metrics) const {
         {"stop",                      antiprompt},
         {"max_tokens",                n_predict},
         {"n_predict",                 n_predict}, // TODO: deduplicate?
-        {"n_keep",                    n_keep},
-        {"n_discard",                 n_discard},
         {"ignore_eos",                sampling.ignore_eos},
         {"stream",                    stream},
         {"logit_bias",                format_logit_bias(sampling.logit_bias)},
@@ -247,7 +243,6 @@ task_params server_task::params_from_json_cmpl(
     task_params defaults;
     defaults.sampling      = params_base.sampling;
     defaults.speculative   = params_base.speculative;
-    defaults.n_keep        = params_base.n_keep;
     defaults.n_predict     = params_base.n_predict;
     defaults.n_cache_reuse = params_base.n_cache_reuse;
     defaults.cache_prompt  = params_base.cache_prompt;
@@ -266,8 +261,6 @@ task_params server_task::params_from_json_cmpl(
     auto max_tokens         = json_value(data,       "max_tokens",         defaults.n_predict);
     params.n_predict        = json_value(data,       "n_predict",          json_value(data, "max_completion_tokens", max_tokens));
     params.n_indent         = json_value(data,       "n_indent",           defaults.n_indent);
-    params.n_keep           = json_value(data,       "n_keep",             defaults.n_keep);
-    params.n_discard        = json_value(data,       "n_discard",          defaults.n_discard);
     params.n_cmpl           = json_value(data,       "n_cmpl",             json_value(data, "n", 1));
     params.n_cache_reuse    = json_value(data,       "n_cache_reuse",      defaults.n_cache_reuse);
     //params.t_max_prompt_ms  = json_value(data,       "t_max_prompt_ms",    defaults.t_max_prompt_ms); // TODO: implement

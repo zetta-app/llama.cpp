@@ -29,26 +29,13 @@ format_prompt() {
     fi
 }
 
-tokenize() {
-    curl \
-        --silent \
-        --request POST \
-        --url "${API_URL}/tokenize" \
-        --header "Content-Type: application/json" \
-        --data-raw "$(jq -ns --arg content "$1" '{content:$content}')" \
-    | jq '.tokens[]'
-}
-
-N_KEEP=$(tokenize "[INST] <<SYS>>\n${INSTRUCTION}\n<</SYS>>" | wc -l)
-
 chat_completion() {
     PROMPT="$(trim_trailing "$(format_prompt "$1")")"
-    DATA="$(echo -n "$PROMPT" | jq -Rs --argjson n_keep $N_KEEP '{
+    DATA="$(echo -n "$PROMPT" | jq -Rs '{
         prompt: .,
         temperature: 0.2,
         top_k: 40,
         top_p: 0.9,
-        n_keep: $n_keep,
         n_predict: 1024,
         stop: ["[INST]"],
         stream: true

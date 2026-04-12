@@ -1299,13 +1299,6 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_UBATCH"));
     add_opt(common_arg(
-        {"--keep"}, "N",
-        string_format("number of tokens to keep from the initial prompt (default: %d, -1 = all)", params.n_keep),
-        [](common_params & params, int value) {
-            params.n_keep = value;
-        }
-    ));
-    add_opt(common_arg(
         {"--swa-full"},
         string_format("use full-size SWA cache (default: %s)\n"
             "[(more info)](https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)", params.swa_full ? "true" : "false"),
@@ -1352,14 +1345,6 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
             params.clear_idle = value;
         }
     ).set_env("LLAMA_ARG_CLEAR_IDLE").set_examples({LLAMA_EXAMPLE_SERVER}));
-    add_opt(common_arg(
-        {"--context-shift"},
-        {"--no-context-shift"},
-        string_format("whether to use context shift on infinite text generation (default: %s)", params.ctx_shift ? "enabled" : "disabled"),
-        [](common_params & params, bool value) {
-            params.ctx_shift = value;
-        }
-    ).set_examples({LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI, LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_IMATRIX, LLAMA_EXAMPLE_PERPLEXITY}).set_env("LLAMA_ARG_CONTEXT_SHIFT"));
     add_opt(common_arg(
         {"--chunks"}, "N",
         string_format("max number of chunks to process (default: %d, -1 = all)", params.n_chunks),
